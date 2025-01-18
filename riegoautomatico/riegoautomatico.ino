@@ -1,32 +1,35 @@
 // Primer prototipo en maceta
 
-#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h>
 
-LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
+int motor = 8;
+
+int read, porcentaje;
+
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Serial LCD
 
 void setup() {
   Serial.begin(9600);
-  pinMode(8, OUTPUT);
-  lcd.begin(16, 2);
+
+  pinMode(motor, OUTPUT);
+
+  lcd.init(); // Inicializa la comunicación con el LCD
+  lcd.backlight(); // Activa la retroiluminación
 }
 
 void loop() {
-  int read = analogRead(A5);
-  int porcentaje = map(read, 1030, 30, 0, 100);
+  read = analogRead(A3);
+  porcentaje = map(read, 1030, 30, 0, 100); // Para el sensor YL-69
 
   lcd.setCursor(0, 0);
-  lcd.print("Humedad: ");
-  lcd.setCursor(9, 0);
-  lcd.print(porcentaje);
-  lcd.setCursor(12, 0);
-  lcd.print("%");
+  lcd.print("Humedad: " + String(porcentaje) + "%");
 
   if(read<1030 && read>=730) // 0-30%
-    digitalWrite(8, LOW);
+    digitalWrite(motor, LOW);
   else if(read<430 && read>0) // 60-100%
-    digitalWrite(8, HIGH);
+    digitalWrite(motor, HIGH);
 
-  if(digitalRead(8)==LOW) { // motor encendido
+  if(digitalRead(motor)==LOW) { // motor encendido
     lcd.setCursor(0, 1);
     lcd.print("MOTOR ON");
   } else { // motor apagado
@@ -35,5 +38,4 @@ void loop() {
   }
 
   delay(500);
-  lcd.clear();
 }
