@@ -14,9 +14,9 @@
 #define SENSOR_TEMP D4
 #define SENSOR_HUM A0
 
-const char* ssid = "..."; // Nombre de tu red WiFi
-const char* password = "..."; // Contraseña de tu red WiFi
-const char* mqtt_server = "..."; // IP de tu Raspberry con Mosquitto
+const char* ssid = "..."; // Nombre de la red WiFi
+const char* password = "..."; // Contraseña de la red WiFi
+const char* mqtt_server = "..."; // IP de la Raspberry con Mosquitto
 const int mqtt_port = 1883; // Puerto MQTT estándar
 const char* topic_temp = "/invernadero/temperatura";
 const char* topic_hum_aire = "/invernadero/humedad_aire";
