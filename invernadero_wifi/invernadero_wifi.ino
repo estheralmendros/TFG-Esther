@@ -143,7 +143,7 @@ void loop() {
     lcd.setCursor(0, 1);
     lcd.print("Humedad: " + String(porcentaje) + "%");
 
-    subsRiego(hum_suelo);
+    subsRiego(porcentaje);
   }
 
   if (currentMillis - lastReadTimeT >= 5000) {  // Leer sensor de temperatura cada 5s
