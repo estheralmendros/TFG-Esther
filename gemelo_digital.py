@@ -7,7 +7,7 @@ from sklearn.metrics import mean_absolute_error, r2_score
 import joblib
 
 # Conectar con InfluxDB
-client = influxdb.InfluxDBClient(host='192.168.1.26', port=8086, database='invernadero')
+client = influxdb.InfluxDBClient(host='...', port=8086, database='invernadero')
 
 # Obtener datos históricos
 query = """
