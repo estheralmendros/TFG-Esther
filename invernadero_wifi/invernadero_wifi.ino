@@ -34,7 +34,7 @@ unsigned long lastSendTime = 0; // Guarda el último tiempo en que se enviaron l
 
 float temp, hum_aire, segs_riego = 0.0;
 int hum_suelo, porcentaje;
-unsigned long segs_riego_ini = 0, segs_riego_fin = 0;
+unsigned long segs_riego_ini = 0, segs_riego_fin = 0, segs_riego_actual = 0;
 bool motor_ON = false; // Para rastrear si el motor está en marcha
 
 void setup() {
@@ -91,15 +91,16 @@ void subsTemperatura(float temp) { // Subsistema temperatura
   }
 }
 
-void subsRiego(int porcentaje) { // Subsistema riego
-  if(porcentaje < 20 && !motor_ON) { // < 20% y motor OFF
+void subsRiego(int hum_suelo) { // Subsistema riego
+  if(hum_suelo >= 800 && !motor_ON) { // < 20% y motor OFF
     digitalWrite(MOTOR, LOW); // Motor encendido
     segs_riego_ini = millis(); // Inicio de cronómetro
     motor_ON = true;
-  } else if(porcentaje > 50 && motor_ON) { // > 50%
+  } else if(hum_suelo <= 500 && motor_ON) { // > 50%
     digitalWrite(MOTOR, HIGH); // Motor apagado
     segs_riego_fin = millis(); // Fin de cronómetro
-    segs_riego += (segs_riego_fin - segs_riego_ini) / 1000.0; // Acumula los segundos que se ha regado
+    segs_riego_actual = (segs_riego_fin - segs_riego_ini) / 1000.0;
+    segs_riego += segs_riego_actual; // Acumula los segundos que se ha regado
     motor_ON = false;
   }
 }
@@ -143,7 +144,7 @@ void loop() {
     lcd.setCursor(0, 1);
     lcd.print("Humedad: " + String(porcentaje) + "%");
 
-    subsRiego(porcentaje);
+    subsRiego(hum_suelo);
   }
 
   if (currentMillis - lastReadTimeT >= 5000) {  // Leer sensor de temperatura cada 5s
@@ -168,13 +169,21 @@ void loop() {
   }
 
   if (currentMillis - lastSendTime >= 60000) { // Enviar datos cada 60 segundos (1 minuto)
-    lastSendTime = currentMillis;
     if (!client.connected()) {
       reconnect();
     }
 
     client.loop();
+
+    if (motor_ON) {
+      unsigned long now = millis();
+      segs_riego_actual = (now - segs_riego_ini) / 1000.0;
+      segs_riego += segs_riego_actual;
+      segs_riego_ini = now; // Reinicio de la variable para el siguiente intervalo
+    }
+
     sendData(temp, hum_aire, porcentaje, segs_riego, client);
     segs_riego = 0.0; // Tras el envío se reinicia el contador
+    lastSendTime = currentMillis;
   }
 }
