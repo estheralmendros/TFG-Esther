@@ -4,10 +4,10 @@
 #include <LiquidCrystal_I2C.h>
 
 #define LED 10
-#define INA 5 // Motor hélice forward
-#define INB 6 // Motor hélice reverse
-#define MOTOR 7 // Bomba de agua
-#define SENSOR_TEMP 4
+#define INA 4 // Motor hélice forward
+#define INB 5 // Motor hélice reverse
+#define MOTOR 6 // Bomba de agua
+#define SENSOR_TEMP 7
 #define SENSOR_HUM A0
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD I2C 16x2
@@ -18,8 +18,8 @@ unsigned long lastReadTimeH = 0; // Guarda el último tiempo en que se leyó el 
 unsigned long lastSendTime = 0; // Guarda el último tiempo en que se enviaron los datos
 unsigned long tiempo_inicio_riego = 0;
 
-float temp = 0.0, hum_aire = 0.0, segs_riego = 0.0;
-int hum_suelo = 0, porcentaje = 0;
+float temp, hum_aire, segs_riego = 0.0;
+int hum_suelo, porcentaje;
 bool motor_ON = false;
 
 void setup() {
@@ -35,12 +35,10 @@ void setup() {
   delay(5000); // Tiempo prudencial para que se estabilice el sensor de temperatura tras inicializarlo
   lcd.init(); // Inicializa la comunicación con el LCD
   lcd.backlight(); // Activa la retroiluminación
-  lcd.setCursor(0, 0);
-  lcd.print("Iniciando...");
 }
 
 void subsTemperatura(float t) { // Subsistema temperatura
-  if (t <= 25) { // frío
+  if (t <= 25.0) { // frío
     digitalWrite(LED, HIGH); // LED encendido
     digitalWrite(INA, LOW); // Hélice apagada
     digitalWrite(INB, LOW);
