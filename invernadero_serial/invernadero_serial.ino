@@ -3,24 +3,25 @@
 #include <DHT.h>
 #include <LiquidCrystal_I2C.h>
 
+// Asignación de pines de la placa:
 #define LED 10
-#define INA 5 // Motor hélice forward
-#define INB 6 // Motor hélice reverse
-#define MOTOR 7 // Bomba de agua
-#define SENSOR_TEMP 8
+#define INA 4 // Motor hélice forward
+#define INB 5 // Motor hélice reverse
+#define MOTOR 6 // Bomba de agua
+#define SENSOR_TEMP 7
 #define SENSOR_HUM A0
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD I2C 16x2
 DHT dht(SENSOR_TEMP, DHT22);
 
-unsigned long lastReadTimeT = 0; // Guarda el último tiempo en que se leyó el sensor de temperatura
-unsigned long lastReadTimeH = 0; // Guarda el último tiempo en que se leyó el sensor de humedad
-unsigned long lastSendTime = 0; // Guarda el último tiempo en que se enviaron los datos
-unsigned long tiempo_inicio_riego = 0;
+unsigned long ultLecturaT = 0; // Último tiempo en que se leyó el sensor de temperatura
+unsigned long ultLecturaH = 0; // Último tiempo en que se leyó el sensor de humedad
+unsigned long ultEnvio = 0; // Último tiempo en que se enviaron los datos
+unsigned long segs_riego_ini = 0; // Tiempo de inicio del riego
 
 float temp, hum_aire, segs_riego = 0.0;
-int hum_suelo, porcentaje;
-bool motor_ON = false;
+int hum_suelo, hum_pct;
+bool motor_ON = false; // Rastrear si el motor está en marcha
 
 void setup() {
   Serial.begin(9600);
@@ -32,17 +33,17 @@ void setup() {
   digitalWrite(MOTOR, HIGH); // Apagado por defecto
 
   dht.begin();
-  delay(5000); // Tiempo prudencial para que se estabilice el sensor de temperatura tras inicializarlo
-  lcd.init(); // Inicializa la comunicación con el LCD
-  lcd.backlight(); // Activa la retroiluminación
+  delay(5000); // Estabilización del sensor DHT
+  lcd.init(); // Inicializar la comunicación con el LCD
+  lcd.backlight(); // Activar la retroiluminación
 }
 
-void subsTemperatura(float t) { // Subsistema temperatura
-  if (t <= 25.0) { // frío
+void subsTemperatura(float temp) { // Subsistema temperatura
+  if (temp <= 25.0) {
     digitalWrite(LED, HIGH); // LED encendido
     digitalWrite(INA, LOW); // Hélice apagada
     digitalWrite(INB, LOW);
-  } else { // calor
+  } else {
     digitalWrite(LED, LOW); // LED apagado
     digitalWrite(INA, HIGH); // Hélice encendida
     digitalWrite(INB, LOW);
@@ -52,13 +53,13 @@ void subsTemperatura(float t) { // Subsistema temperatura
 void subsRiego(int hum_pct) { // Subsistema riego
   unsigned long ahora = millis();
 
-  if (hum_pct <= 25 && !motor_ON) {
+  if (hum_pct <= 30 && !motor_ON) {
     digitalWrite(MOTOR, LOW); // Encender bomba
-    tiempo_inicio_riego = ahora;
+    segs_riego_ini = ahora;
     motor_ON = true;
   }
 
-  if (motor_ON && (ahora - tiempo_inicio_riego >= 5000)) {
+  if (motor_ON && (ahora - segs_riego_ini >= 5000)) {
     digitalWrite(MOTOR, HIGH); // Apagar bomba
     segs_riego += 5.0; // Añadir 5 segundos al acumulado
     motor_ON = false;
@@ -68,40 +69,41 @@ void subsRiego(int hum_pct) { // Subsistema riego
 void sendData() { // Envío de datos por USB Serial
   if (motor_ON) {
     unsigned long ahora = millis();
-    float segundos_actuales = (ahora - tiempo_inicio_riego) / 1000.0;
-    segs_riego += segundos_actuales;
-    tiempo_inicio_riego = ahora; // Reinicia para el siguiente intervalo
+    float segs_riego_actual = (ahora - segs_riego_ini) / 1000.0;
+    segs_riego += segs_riego_actual;
+    segs_riego_ini = ahora; // Reinicio de la variable para el siguiente intervalo
   }
 
-  Serial.print(temp, 1); // Temperatura
+  Serial.print(temp, 1);
   Serial.print(",");
-  Serial.print(hum_aire, 1); // Humedad aire
+  Serial.print(hum_aire, 1);
   Serial.print(",");
-  Serial.print(porcentaje); // Humedad suelo (%)
+  Serial.print(hum_pct);
   Serial.print(",");
-  Serial.println(segs_riego, 1); // Segundos de riego
+  Serial.println(segs_riego, 1);
 
-  segs_riego = 0.0; // Reiniciar contador de riego
+  segs_riego = 0.0; // Reinicio del contador de riego
 }
 
 void loop() {
-  unsigned long now = millis();
+  unsigned long ahora = millis();
 
-  if (now - lastReadTimeH >= 1000) { // Leer sensor de humedad cada 1s
-    lastReadTimeH = now;
+  if (ahora - ultLecturaH >= 1000) { // Leer sensor de humedad cada 1s
+    ultLecturaH = ahora;
     hum_suelo = analogRead(SENSOR_HUM);
-    porcentaje = map(hum_suelo, 1024, 0, 0, 100); // Conversión de la humedad del suelo a %
+    hum_pct = map(hum_suelo, 1024, 0, 0, 100); // Conversión a %
 
+    // Mostrar los datos en el LCD:
     lcd.setCursor(0, 1);
     lcd.print("Humedad: ");
-    lcd.print(porcentaje);
+    lcd.print(hum_pct);
     lcd.print("%");
 
-    subsRiego(porcentaje);
+    subsRiego(hum_pct);
   }
 
-  if (now - lastReadTimeT >= 5000) { // Leer sensor de temperatura cada 5s
-    lastReadTimeT = now;
+  if (ahora - ultLecturaT >= 5000) { // Leer sensor de temperatura cada 5s
+    ultLecturaT = ahora;
     float t = dht.readTemperature(); // Temperatura en ºC
     float h = dht.readHumidity(); // Humedad del aire en %
     if (!isnan(t) && !isnan(h)) {
@@ -109,6 +111,7 @@ void loop() {
       hum_aire = h;
     }
 
+    // Mostrar los datos en el LCD:
     lcd.setCursor(0, 0);
     lcd.print("Temp.: ");
     lcd.print(temp);
@@ -117,8 +120,8 @@ void loop() {
     subsTemperatura(temp);
   }
 
-  if (now - lastSendTime >= 60000) {
+  if (ahora - ultEnvio >= 60000) { // Enviar datos cada 60 segundos (1 minuto)
     sendData();
-    lastSendTime = now;
+    ultEnvio = ahora;
   }
 }
