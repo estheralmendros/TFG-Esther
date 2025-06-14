@@ -4,10 +4,10 @@
 #include <LiquidCrystal_I2C.h>
 
 #define LED 10
-#define INA 4 // Motor hélice forward
-#define INB 5 // Motor hélice reverse
-#define MOTOR 6 // Bomba de agua
-#define SENSOR_TEMP 7
+#define INA 5 // Motor hélice forward
+#define INB 6 // Motor hélice reverse
+#define MOTOR 7 // Bomba de agua
+#define SENSOR_TEMP 8
 #define SENSOR_HUM A0
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD I2C 16x2
@@ -52,7 +52,7 @@ void subsTemperatura(float t) { // Subsistema temperatura
 void subsRiego(int hum_pct) { // Subsistema riego
   unsigned long ahora = millis();
 
-  if (hum_pct <= 30 && !motor_ON) {
+  if (hum_pct <= 25 && !motor_ON) {
     digitalWrite(MOTOR, LOW); // Encender bomba
     tiempo_inicio_riego = ahora;
     motor_ON = true;
@@ -66,6 +66,13 @@ void subsRiego(int hum_pct) { // Subsistema riego
 }
 
 void sendData() { // Envío de datos por USB Serial
+  if (motor_ON) {
+    unsigned long ahora = millis();
+    float segundos_actuales = (ahora - tiempo_inicio_riego) / 1000.0;
+    segs_riego += segundos_actuales;
+    tiempo_inicio_riego = ahora; // Reinicia para el siguiente intervalo
+  }
+
   Serial.print(temp, 1); // Temperatura
   Serial.print(",");
   Serial.print(hum_aire, 1); // Humedad aire

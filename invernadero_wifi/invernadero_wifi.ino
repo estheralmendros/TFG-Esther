@@ -1,12 +1,11 @@
-// Sistema completo en invernadero con WiFi
+// Sistema completo de invernadero con comunicación WiFi
 
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include <Adafruit_Sensor.h>
 #include <DHT.h>
-#include <DHT_U.h>
 #include <LiquidCrystal_I2C.h>
 
+// Asignación de pines de la placa:
 #define LED D10
 #define INA D5 // Motor hélice forward
 #define INB D6 // Motor hélice reverse
@@ -15,27 +14,27 @@
 #define SENSOR_HUM A0
 
 const char* ssid = "..."; // Nombre de la red WiFi
-const char* password = "..."; // Contraseña de la red WiFi
-const char* mqtt_server = "..."; // IP de la Raspberry con Mosquitto
-const int mqtt_port = 1883; // Puerto MQTT estándar
+const char* contrasena = "..."; // Contraseña de la red WiFi
+const char* servidor_mqtt = "..."; // IP de la Raspberry con Mosquitto
+const int puerto_mqtt = 1883; // Puerto MQTT estándar
 const char* topic_temp = "/invernadero/temperatura";
 const char* topic_hum_aire = "/invernadero/humedad_aire";
 const char* topic_hum_suelo = "/invernadero/humedad_suelo";
 const char* topic_segs_riego = "/invernadero/segs_riego";
 
-LiquidCrystal_I2C lcd(0x27, 16, 2); // Serial LCD
+LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD I2C 16x2
 DHT dht(SENSOR_TEMP, DHT22);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-unsigned long lastReadTimeT = 0; // Guarda el último tiempo en que se leyó el sensor de temperatura
-unsigned long lastReadTimeH = 0; // Guarda el último tiempo en que se leyó el sensor de humedad
-unsigned long lastSendTime = 0; // Guarda el último tiempo en que se enviaron los datos
+unsigned long ultLecturaT = 0; // Último tiempo en que se leyó el sensor de temperatura
+unsigned long ultLecturaH = 0; // Último tiempo en que se leyó el sensor de humedad
+unsigned long ultEnvio = 0; // Último tiempo en que se enviaron los datos
+unsigned long segs_riego_ini = 0; // Tiempo de inicio del riego
 
 float temp, hum_aire, segs_riego = 0.0;
-int hum_suelo, porcentaje;
-unsigned long segs_riego_ini = 0, segs_riego_fin = 0, segs_riego_actual = 0;
-bool motor_ON = false; // Para rastrear si el motor está en marcha
+int hum_suelo, hum_pct;
+bool motor_ON = false; // Rastrear si el motor está en marcha
 
 void setup() {
   Serial.begin(115200);
@@ -44,13 +43,14 @@ void setup() {
   pinMode(INA, OUTPUT);
   pinMode(INB, OUTPUT);
   pinMode(MOTOR, OUTPUT);
+  digitalWrite(MOTOR, HIGH); // Apagado por defecto
 
   dht.begin();
-  delay(5000); // Tiempo prudencial para que se estabilice el sensor de temperatura tras inicializarlo
-  lcd.init(); // Inicializa la comunicación con el LCD
-  lcd.backlight(); // Activa la retroiluminación
+  delay(5000); // Estabilización del sensor DHT
+  lcd.init(); // Inicializar la comunicación con el LCD
+  lcd.backlight(); // Activar la retroiluminación
 
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, contrasena);
   Serial.print("Conectando a WiFi...");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -61,11 +61,11 @@ void setup() {
   Serial.print("Dirección IP: ");
   Serial.println(WiFi.localIP());
 
-  client.setServer(mqtt_server, mqtt_port);
-  reconnect();
+  client.setServer(servidor_mqtt, puerto_mqtt);
+  reconectar();
 }
 
-void reconnect() {
+void reconectar() {
   while (!client.connected()) {
     Serial.print("Conectando a MQTT...");
     if (client.connect("WemosD1", "", ""))
@@ -80,110 +80,98 @@ void reconnect() {
 }
 
 void subsTemperatura(float temp) { // Subsistema temperatura
-  if(temp <= 24) { // frío
+  if (temp <= 25.0) {
     digitalWrite(LED, HIGH); // LED encendido
     digitalWrite(INA, LOW); // Hélice apagada
     digitalWrite(INB, LOW);
-  } else { // calor
+  } else {
     digitalWrite(LED, LOW); // LED apagado
     digitalWrite(INA, HIGH); // Hélice encendida
     digitalWrite(INB, LOW);
   }
 }
 
-void subsRiego(int hum_suelo) { // Subsistema riego
-  if(hum_suelo >= 800 && !motor_ON) { // < 20% y motor OFF
-    digitalWrite(MOTOR, LOW); // Motor encendido
-    segs_riego_ini = millis(); // Inicio de cronómetro
+void subsRiego(int hum_pct) { // Subsistema riego
+  unsigned long ahora = millis();
+
+  if (hum_pct <= 30 && !motor_ON) {
+    digitalWrite(MOTOR, LOW);  // Encender bomba
+    segs_riego_ini = ahora;
     motor_ON = true;
-  } else if(hum_suelo <= 500 && motor_ON) { // > 50%
-    digitalWrite(MOTOR, HIGH); // Motor apagado
-    segs_riego_fin = millis(); // Fin de cronómetro
-    segs_riego_actual = (segs_riego_fin - segs_riego_ini) / 1000.0;
-    segs_riego += segs_riego_actual; // Acumula los segundos que se ha regado
+  }
+
+  if (motor_ON && (ahora - segs_riego_ini >= 5000)) {
+    digitalWrite(MOTOR, HIGH);  // Apagar bomba
+    segs_riego += 5.0; // Añadir 5 segundos al acumulado
     motor_ON = false;
   }
 }
 
-void sendData(float temp, float hum_aire, int porcentaje, float segs_riego, PubSubClient client) { // Envío de datos a MQTT
+void sendData() { // Envío de datos a MQTT
+  if (motor_ON) {
+    unsigned long ahora = millis();
+    float segs_riego_actual = (ahora - segs_riego_ini) / 1000.0;
+    segs_riego += segs_riego_actual;
+    segs_riego_ini = ahora; // Reinicio de la variable para el siguiente intervalo
+  }
+
+  // Conversión a string:
   char temp_str[6], hum_air_str[6], hum_suelo_str[6], segs_riego_str[6];
-  dtostrf(temp, 4, 1, temp_str); // Conversión de float a string
-  dtostrf(hum_aire, 4, 1, hum_air_str); // Conversión de float a string
-  itoa(porcentaje, hum_suelo_str, 10); // Conversión de int a string
-  dtostrf(segs_riego, 4, 1, segs_riego_str); // Conversión de float a string
+  dtostrf(temp, 4, 1, temp_str);
+  dtostrf(hum_aire, 4, 1, hum_air_str);
+  itoa(hum_pct, hum_suelo_str, 10);
+  dtostrf(segs_riego, 4, 1, segs_riego_str);
   
   client.publish(topic_temp, temp_str);
   client.publish(topic_hum_aire, hum_air_str);
   client.publish(topic_hum_suelo, hum_suelo_str);
   client.publish(topic_segs_riego, segs_riego_str);
-
-  // Debug:
-  /*Serial.println("Datos enviados a MQTT:");
-  Serial.print("Temperatura: "); Serial.println(temp_str);
-  Serial.print("Humedad del Aire: "); Serial.println(hum_air_str);
-  Serial.print("Humedad del Suelo: "); Serial.println(hum_suelo_str);
-  Serial.print("Segundos de Riego en 1 minuto: "); Serial.println(segs_riego_str);*/
+  
+  segs_riego = 0.0; // Reinicio del contador de riego
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+  unsigned long ahora = millis();
 
-  if (currentMillis - lastReadTimeH >= 500) {  // Leer sensor de humedad cada 500ms
-    lastReadTimeH = currentMillis;
+  if (ahora - ultLecturaH >= 1000) {  // Leer sensor de humedad cada 1s
+    ultLecturaH = ahora;
     hum_suelo = analogRead(SENSOR_HUM);
-    porcentaje = map(hum_suelo, 1024, 0, 0, 100); // Conversión de la humedad del suelo a %
+    hum_pct = map(hum_suelo, 1024, 0, 0, 100); // Conversión a %
 
-    // Debug:
-    /*Serial.print("Humedad Suelo: ");
-    Serial.print(porcentaje);
-    Serial.println(" %");*/
-    
-    // Muestra de datos en LCD:
-    /*lcd.setCursor(0, 0);
-    lcd.print("Temp.: " + String(temp) + "C");*/
+    // Mostrar los datos en el LCD:
     lcd.setCursor(0, 1);
-    lcd.print("Humedad: " + String(porcentaje) + "%");
+    lcd.print("Humedad: ");
+    lcd.print(hum_pct);
+    lcd.print("%");
 
-    subsRiego(hum_suelo);
+    subsRiego(hum_pct);
   }
 
-  if (currentMillis - lastReadTimeT >= 5000) {  // Leer sensor de temperatura cada 5s
-    lastReadTimeT = currentMillis;
-    temp = dht.readTemperature(); // Temperatura en ºC
-    hum_aire = dht.readHumidity(); // Humedad del aire en %
-
-    // Debug:
-    /*Serial.print("Humedad Aire: ");
-    Serial.print(hum_aire);
-    Serial.print(" %\tTemperatura: ");
-    Serial.print(temp);
-    Serial.print(" *C\t");*/
+  if (ahora - ultLecturaT >= 5000) {  // Leer sensor de temperatura cada 5s
+    ultLecturaT = ahora;
+    float t = dht.readTemperature(); // Temperatura en ºC
+    float h = dht.readHumidity(); // Humedad del aire en %
+    if (!isnan(t) && !isnan(h)) {
+      temp = t;
+      hum_aire = h;
+    }
     
-    // Muestra de datos en LCD:
+    // Mostrar los datos en el LCD:
     lcd.setCursor(0, 0);
-    lcd.print("Temp.: " + String(temp) + "C");
-    /*lcd.setCursor(0, 1);
-    lcd.print("Humedad: " + String(porcentaje) + "%");*/
+    lcd.print("Temp.: ");
+    lcd.print(temp);
+    lcd.print("C");
 
     subsTemperatura(temp);
   }
 
-  if (currentMillis - lastSendTime >= 60000) { // Enviar datos cada 60 segundos (1 minuto)
-    if (!client.connected()) {
-      reconnect();
-    }
+  if (ahora - ultEnvio >= 60000) { // Enviar datos cada 60 segundos (1 minuto)
+    if (!client.connected())
+      reconectar();
 
     client.loop();
 
-    if (motor_ON) {
-      unsigned long now = millis();
-      segs_riego_actual = (now - segs_riego_ini) / 1000.0;
-      segs_riego += segs_riego_actual;
-      segs_riego_ini = now; // Reinicio de la variable para el siguiente intervalo
-    }
-
-    sendData(temp, hum_aire, porcentaje, segs_riego, client);
-    segs_riego = 0.0; // Tras el envío se reinicia el contador
-    lastSendTime = currentMillis;
+    sendData();
+    ultEnvio = ahora;
   }
 }

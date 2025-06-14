@@ -7,26 +7,33 @@ from sklearn.metrics import mean_absolute_error, r2_score
 import joblib
 
 # Conectar con InfluxDB
-client = influxdb.InfluxDBClient(host='...', port=8086, database='invernadero')
+client = influxdb.InfluxDBClient(host='localhost', port=8086, database='invernadero')
 
-# Obtener datos históricos
-query = """
-SELECT temperatura, humedad_aire, humedad_suelo, segundos_riego 
-FROM riego_data 
-WHERE time > now() - 90d
-"""
-result = client.query(query)
-data = list(result.get_points())
+def get_df(measurement): # DataFrame para cada medición
+    query = f"SELECT valor FROM {measurement} WHERE time > now() - 90d"
+    result = client.query(query)
+    data = list(result.get_points())
+    df = pd.DataFrame(data)
+    df.rename(columns={'valor': measurement}, inplace=True)
+    return df.set_index("time")
 
-# Convertir a DataFrame
-df = pd.DataFrame(data)
+df_temp = get_df("temperatura")
+df_hum_aire = get_df("humedad_aire")
+df_hum_suelo = get_df("humedad_suelo")
+df_riego = get_df("segs_riego")
+
+# Unir todos los DataFrames
+df = df_temp.join([df_hum_aire, df_hum_suelo, df_riego], how="inner")
+
+# Renombrar columnas para el modelo
+df.columns = ['temperatura', 'humedad_aire', 'humedad_suelo', 'segs_riego']
 
 # Eliminar valores nulos
 df.dropna(inplace=True)
 
 # Definir variables de entrada (X) y salida (y)
 X = df[['temperatura', 'humedad_aire', 'humedad_suelo']]
-y = df['segundos_riego']
+y = df['segs_riego']
 
 # Dividir datos en entrenamiento y prueba (80%-20%)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)

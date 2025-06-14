@@ -3,7 +3,7 @@ from influxdb import InfluxDBClient
 import time
 
 # Configura el puerto serie donde está conectado tu Arduino
-SERIAL_PORT = "/dev/ttyUSB0"   # O prueba con /dev/ttyACM0 si no funciona
+SERIAL_PORT = "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A5069RR4-if00-port0"
 BAUD_RATE = 9600
 
 # Configuración de la base de datos InfluxDB 1.x
@@ -28,15 +28,7 @@ while True:
             continue
 
         print("Recibido:", line)
-        parts = line.split(',')
-        if len(parts) != 4:
-            print("Formato inválido")
-            continue
-
-        temp = float(parts[0])
-        hum_aire = float(parts[1])
-        hum_suelo = float(parts[2])
-        segs_riego = float(parts[3])
+        temp, hum_aire, hum_suelo, segs_riego = map(float, line.split(","))
 
         json_body = [
             {
