@@ -54,7 +54,7 @@ print(f"Error absoluto medio (MAE): {mae:.2f} segundos")
 print(f"Coeficiente de determinación (R²): {r2:.2f}")
 
 # Realizar una predicción para nuevas condiciones
-nueva_condicion = np.array([[25.0, 60.0, 40.0]])  # Ejemplo: 25°C, 60% humedad aire, 40% humedad suelo
+nueva_condicion = np.array([[25.0, 60.0, 30.0]])  # Ejemplo: 25°C, 60% humedad aire, 30% humedad suelo
 prediccion = model.predict(nueva_condicion)[0]
 
 print(f"Predicción: Se debe regar {prediccion:.2f} segundos")
