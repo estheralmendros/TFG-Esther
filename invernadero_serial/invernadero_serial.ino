@@ -5,10 +5,10 @@
 
 // Asignación de pines de la placa:
 #define LED 10
-#define INA 4 // Motor hélice forward
-#define INB 5 // Motor hélice reverse
-#define MOTOR 6 // Bomba de agua
-#define SENSOR_TEMP 7
+#define INA 5 // Motor hélice forward
+#define INB 6 // Motor hélice reverse
+#define MOTOR 7 // Bomba de agua
+#define SENSOR_TEMP 8
 #define SENSOR_HUM A0
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // LCD I2C 16x2
