@@ -53,11 +53,34 @@ r2 = r2_score(y_test, y_pred)
 print(f"Error absoluto medio (MAE): {mae:.2f} segundos")
 print(f"Coeficiente de determinación (R²): {r2:.2f}")
 
-# Realizar una predicción para nuevas condiciones
-nueva_condicion = np.array([[25.0, 60.0, 30.0]])  # Ejemplo: 25°C, 60% humedad aire, 30% humedad suelo
+# Obtener los últimos valores registrados
+def get_last_value(measurement):
+    query = f"SELECT LAST(valor) FROM {measurement}"
+    result = client.query(query)
+    points = list(result.get_points())
+    if points:
+        return points[0]['last']
+    else:
+        return None
+
+ult_temp = get_last_value("temperatura")
+ult_hum_aire = get_last_value("humedad_aire")
+ult_hum_suelo = get_last_value("humedad_suelo")
+
+if None in (ult_temp, ult_hum_aire, ult_hum_suelo):
+    print("Error: No se pudieron obtener todos los valores más recientes.")
+    client.close()
+    exit(1)
+
+# Realizar la predicción
+nueva_condicion = np.array([[ult_temp, ult_hum_aire, ult_hum_suelo]])
 prediccion = model.predict(nueva_condicion)[0]
 
-print(f"Predicción: Se debe regar {prediccion:.2f} segundos")
+print(f"Predicción basada en los últimos datos reales:")
+print(f"  Temperatura: {ult_temp}°C")
+print(f"  Humedad aire: {ult_hum_aire}%")
+print(f"  Humedad suelo: {ult_hum_suelo}%")
+print(f"=> Se debe regar {prediccion:.2f} segundos")
 
 # Guardar la predicción en InfluxDB
 json_body = [
