@@ -1,0 +1,6 @@
+influxdb
+pandas
+numpy
+scikit-learn
+pyserial
+joblib
